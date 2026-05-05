@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Контроль Доступа</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #f4f4f9; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 10px; shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+        .status-granted { color: green; font-weight: bold; }
+        .status-denied { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Журнал входов</h1>
+        <canvas id="accessChart" width="400" height="200"></canvas>
+        <table id="logsTable">
+            <thead>
+                <tr>
+                    <th>Время</th>
+                    <th>UID</th>
+                    <th>Пользователь</th>
+                    <th>Статус</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <script>
+        const _url = "https://rddmwatlxufwdcujrcrw.supabase.co";
+        const _key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkZG13YXRseHVmd2RjdWpyY3J3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NTY4NTMsImV4cCI6MjA5MzUzMjg1M30.O4o_1ug_nJ7o9qrUsM5p5QAyHTZKixxSKkaGE5r27K0";
+        const supabase = collections.createClient(_url, _key);
+
+        async function loadData() {
+            let { data: logs, error } = await supabase
+                .from('access_logs')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            const tbody = document.querySelector('#logsTable tbody');
+            tbody.innerHTML = '';
+            
+            logs.forEach(log => {
+                const row = `<tr>
+                    <td>${new Date(log.created_at).toLocaleString()}</td>
+                    <td>${log.uid}</td>
+                    <td>${log.user_name}</td>
+                    <td class="${log.status === 'GRANTED' ? 'status-granted' : 'status-denied'}">${log.status}</td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        }
+
+        // Обновлять данные каждые 5 секунд
+        setInterval(loadData, 5000);
+        loadData();
+    </script>
+</body>
+</html>

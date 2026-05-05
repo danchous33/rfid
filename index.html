@@ -1,64 +1,197 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>Контроль Доступа</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFID Access Control</title>
+    <!-- Подключаем Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: sans-serif; background: #f4f4f9; padding: 20px; }
-        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 10px; shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #4CAF50; color: white; }
-        .status-granted { color: green; font-weight: bold; }
-        .status-denied { color: red; font-weight: bold; }
+        :root {
+            --primary: #2563eb;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --bg: #f8fafc;
+            --text: #1e293b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        h1 { margin: 0; font-size: 24px; color: var(--primary); }
+
+        .status-dot {
+            height: 10px;
+            width: 10px;
+            background-color: var(--success);
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        th {
+            background-color: #f1f5f9;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .badge-granted { background: #dcfce7; color: var(--success); }
+        .badge-denied { background: #fee2e2; color: var(--danger); }
+
+        .uid-code {
+            font-family: monospace;
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        #loading-indicator {
+            text-align: center;
+            padding: 20px;
+            color: #64748b;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Журнал входов</h1>
-        <canvas id="accessChart" width="400" height="200"></canvas>
-        <table id="logsTable">
-            <thead>
-                <tr>
-                    <th>Время</th>
-                    <th>UID</th>
-                    <th>Пользователь</th>
-                    <th>Статус</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
+
+<div class="container">
+    <div class="header">
+        <h1>Панель контроля доступа</h1>
+        <div>
+            <span class="status-dot"></span>
+            <span id="live-status">Live: Обновление каждые 5 сек</span>
+        </div>
     </div>
 
-    <script>
-        const _url = "https://rddmwatlxufwdcujrcrw.supabase.co";
-        const _key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkZG13YXRseHVmd2RjdWpyY3J3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NTY4NTMsImV4cCI6MjA5MzUzMjg1M30.O4o_1ug_nJ7o9qrUsM5p5QAyHTZKixxSKkaGE5r27K0";
-        const supabase = collections.createClient(_url, _key);
+    <div id="loading-indicator">Загрузка данных из облака...</div>
 
-        async function loadData() {
-            let { data: logs, error } = await supabase
+    <table id="logsTable" style="display: none;">
+        <thead>
+            <tr>
+                <th>Дата и время</th>
+                <th>UID Карты</th>
+                <th>Пользователь</th>
+                <th>Статус</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+            <!-- Данные появятся здесь -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+    // КОНФИГУРАЦИЯ
+    const SUPABASE_URL = "https://rddmwatlxufwdcujrcrw.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkZG13YXRseHVmd2RjdWpyY3J3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NTY4NTMsImV4cCI6MjA5MzUzMjg1M30.O4o_1ug_nJ7o9qrUsM5p5QAyHTZKixxSKkaGE5r27K0";
+
+    // Изменили имя на mySupabase, чтобы избежать ошибки "already been declared"
+    // Используем window.supabase.createClient для обращения к загруженной библиотеке
+    const mySupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function fetchLogs() {
+        try {
+            console.log("Запрос данных из Supabase...");
+            const { data, error } = await mySupabase
                 .from('access_logs')
                 .select('*')
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .limit(20);
 
-            const tbody = document.querySelector('#logsTable tbody');
-            tbody.innerHTML = '';
+            if (error) throw error;
+
+            console.log("Данные получены:", data);
+            renderTable(data);
             
-            logs.forEach(log => {
-                const row = `<tr>
-                    <td>${new Date(log.created_at).toLocaleString()}</td>
-                    <td>${log.uid}</td>
-                    <td>${log.user_name}</td>
-                    <td class="${log.status === 'GRANTED' ? 'status-granted' : 'status-denied'}">${log.status}</td>
-                </tr>`;
-                tbody.innerHTML += row;
-            });
+            document.getElementById('loading-indicator').style.display = 'none';
+            document.getElementById('logsTable').style.display = 'table';
+            
+        } catch (err) {
+            console.error('Ошибка получения данных:', err.message);
+            document.getElementById('loading-indicator').innerHTML = 
+                `<span style="color:red">Ошибка: ${err.message}. Проверьте консоль.</span>`;
+        }
+    }
+
+    function renderTable(logs) {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        if (!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Таблица пуста. Ожидание первого сканирования...</td></tr>';
+            return;
         }
 
-        // Обновлять данные каждые 5 секунд
-        setInterval(loadData, 5000);
-        loadData();
-    </script>
+        logs.forEach(log => {
+            const date = new Date(log.created_at).toLocaleString('ru-RU');
+            const isGranted = log.status === 'GRANTED';
+            
+            const row = `
+                <tr>
+                    <td>${date}</td>
+                    <td><span class="uid-code">${log.uid}</span></td>
+                    <td>${log.user_name || 'Неизвестный'}</td>
+                    <td>
+                        <span class="badge ${isGranted ? 'badge-granted' : 'badge-denied'}">
+                            ${isGranted ? 'РАЗРЕШЕНО' : 'ОТКАЗАНО'}
+                        </span>
+                    </td>
+                </tr>
+            `;
+            tbody.innerHTML += row;
+        });
+    }
+
+    // Запуск
+    fetchLogs();
+    // Обновление каждые 5 секунд
+    setInterval(fetchLogs, 5000);
+</script>
+
 </body>
 </html>
